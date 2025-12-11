@@ -236,6 +236,66 @@ class Database:
             messagebox.showerror("Ошибка", f"Ошибка базы данных при аутентификации: {e}")
             return None
     
+
+    def add_user(self, username, password, role='user'):
+        """Добавляет нового пользователя (для администратора)"""
+        try:
+            with self.connection.cursor() as cursor:
+                # Проверяем уникальность логина
+                cursor.execute("SELECT id FROM users WHERE username=%s", (username,))
+                if cursor.fetchone():
+                    return False, "Пользователь с таким логином уже существует"
+                
+                # Хешируем пароль
+                password_hash = hashlib.sha256(password.encode()).hexdigest()
+                
+                # Добавляем пользователя
+                cursor.execute("""
+                    INSERT INTO users (username, password, role, is_active) 
+                    VALUES (%s, %s, %s, 1)
+                """, (username, password_hash, role))
+                
+                self.connection.commit()
+                return True, "Пользователь успешно добавлен"
+        except Exception as e:
+            return False, f"Ошибка добавления пользователя: {e}"
+        
+    def update_user(self, user_id, username, role, is_active):
+        """Обновляет данные пользователя"""
+        try:
+            with self.connection.cursor() as cursor:
+                # Проверяем уникальность логина (исключая текущего пользователя)
+                cursor.execute("SELECT id FROM users WHERE username=%s AND id!=%s", 
+                             (username, user_id))
+                if cursor.fetchone():
+                    return False, "Пользователь с таким логином уже существует"
+                
+                # Обновляем данные пользователя
+                cursor.execute("""
+                    UPDATE users 
+                    SET username=%s, role=%s, is_active=%s, updated_at=NOW() 
+                    WHERE id=%s
+                """, (username, role, 1 if is_active else 0, user_id))
+                
+                self.connection.commit()
+                return True, "Данные пользователя обновлены"
+        except Exception as e:
+            return False, f"Ошибка обновления пользователя: {e}"
+        
+    def unblock_user(self, user_id):
+        """Разблокирует пользователя и сбрасывает счетчик попыток"""
+        try:
+            with self.connection.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE users 
+                    SET is_active=1, failed_attempts=0, updated_at=NOW() 
+                    WHERE id=%s
+                """, (user_id,))
+                self.connection.commit()
+                return True, "Пользователь разблокирован"
+        except Exception as e:
+            return False, f"Ошибка разблокировки пользователя: {e}"
+
     def get_user_by_id(self, user_id):
         """Получает пользователя по ID"""
         try:
